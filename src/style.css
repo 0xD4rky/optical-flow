@@ -1,0 +1,22 @@
+body {
+    background-color: #1E1E1E;
+    color: #FFFFFF;
+}
+
+.stButton>button {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.stSlider>div>div>div>div {
+    background-color: #4CAF50;
+}

@@ -4,7 +4,6 @@ import numpy as np
 from main import OpticalFlowDetector
 import plotly.graph_objects as go
 import time
-import base64
 
 # Custom CSS with more advanced styling
 custom_css = """
@@ -54,9 +53,6 @@ custom_css = """
         color: #4CAF50;
         border-radius: 10px;
     }
-    .stSlider > div > div > div > div {
-        background-color: #4CAF50;
-    }
     .sidebar .sidebar-content {
         background-color: rgba(18, 18, 18, 0.9);
         backdrop-filter: blur(10px);
@@ -91,42 +87,52 @@ custom_css = """
 </style>
 """
 
+# JavaScript for improving button responsiveness
+js_code = """
+<script>
+function toggleRunning() {
+    const button = document.querySelector('.stButton button');
+    if (button.innerText === '▶️ Start') {
+        button.innerText = '⏹️ Stop';
+    } else {
+        button.innerText = '▶️ Start';
+    }
+}
+</script>
+"""
+
 st.set_page_config(page_title="Advanced Optical Flow Tracker", layout="wide")
 st.markdown(custom_css, unsafe_allow_html=True)
+st.markdown(js_code, unsafe_allow_html=True)
 
 # Initialize session state variables
 if 'detector' not in st.session_state:
     st.session_state.detector = OpticalFlowDetector()
-if 'start_time' not in st.session_state:
-    st.session_state.start_time = time.time()
-if 'frame_count' not in st.session_state:
-    st.session_state.frame_count = 0
 if 'running' not in st.session_state:
     st.session_state.running = False
+if 'fps' not in st.session_state:
+    st.session_state.fps = 0
+if 'last_update_time' not in st.session_state:
+    st.session_state.last_update_time = time.time()
 
 def sidebar():
     with st.sidebar:
-        st.title("🎛️ Control Panel")
-        st.session_state.detector.trajectory_len = st.slider("🧵 Trajectory Length", 10, 100, 40)
-        st.session_state.detector.detect_interval = st.slider("⏱️ Detect Interval", 1, 20, 5)
-        st.session_state.detector.feature_params['maxCorners'] = st.slider("🔢 Max Corners", 10, 100, 20)
-        st.session_state.detector.feature_params['qualityLevel'] = st.slider("🎯 Quality Level", 0.1, 0.5, 0.3, 0.01)
-        
-        st.markdown("---")
-        st.subheader("📊 Statistics")
+        st.title("📊 Statistics")
         st.session_state.stats_container = st.empty()
 
 def update_stats():
     with st.session_state.stats_container.container():
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("FPS", f"{calculate_fps():.2f}")
+            st.metric("FPS", f"{st.session_state.fps:.2f}")
         with col2:
             st.metric("Track Count", len(st.session_state.detector.trajectories))
 
 def calculate_fps():
-    elapsed_time = time.time() - st.session_state.start_time
-    return st.session_state.frame_count / elapsed_time if elapsed_time > 0 else 0
+    current_time = time.time()
+    fps = 1 / (current_time - st.session_state.last_update_time)
+    st.session_state.last_update_time = current_time
+    return fps
 
 def main_content():
     st.title("🌊 Advanced Optical Flow Tracker")
@@ -138,16 +144,17 @@ def main_content():
     
     with col2:
         st.markdown("### 🎮 Controls")
-        start_stop = st.button("▶️ Start" if not st.session_state.running else "⏹️ Stop")
+        start_stop = st.button("▶️ Start" if not st.session_state.running else "⏹️ Stop", on_click=lambda: st.markdown("<script>toggleRunning()</script>", unsafe_allow_html=True))
         if start_stop:
             st.session_state.running = not st.session_state.running
         
         st.markdown("### 📈 Trajectory Visualization")
         plot_container = st.empty()
     
-    if st.session_state.running:
-        cap = cv2.VideoCapture(0)
-        while st.session_state.running:
+    cap = cv2.VideoCapture(0)
+    
+    while True:
+        if st.session_state.running:
             ret, frame = cap.read()
             if not ret:
                 break
@@ -162,38 +169,25 @@ def main_content():
 
             video_feed.image(processed_frame, channels="BGR", use_column_width=True)
             
+            # Update FPS
+            st.session_state.fps = calculate_fps()
+            
             # Update statistics
-            st.session_state.frame_count += 1
             update_stats()
             
             # Update trajectory plot
             update_trajectory_plot(plot_container)
+        else:
+            with video_feed:
+                st.info("Press the Start button to begin optical flow tracking.")
+            time.sleep(0.1)  # Prevent high CPU usage when not running
 
-        cap.release()
-    else:
-        with video_feed:
-            st.info("Press the Start button to begin optical flow tracking.")
+        # Check if the Streamlit script should rerun
+        if st.session_state.running != st.session_state.get('last_running_state', None):
+            st.session_state.last_running_state = st.session_state.running
+            st.rerun()
 
-    st.markdown("---")
-    with st.expander("ℹ️ About Optical Flow Tracking"):
-        st.markdown("""
-        ### What is Optical Flow?
-        Optical flow is the pattern of apparent motion of objects, surfaces, and edges in a visual scene caused by the relative motion between an observer and the scene. This technique is crucial in computer vision for:
-        
-        - Motion detection
-        - Object segmentation
-        - Time-to-collision calculations
-        - Visual odometry
-        - Video compression
-        
-        ### How it Works
-        This application uses the Lucas-Kanade method for optical flow estimation. It tracks a sparse feature set across consecutive frames, allowing for efficient real-time processing.
-        
-        ### Tips for Best Results
-        - Ensure good lighting conditions
-        - Move the camera or objects slowly for better tracking
-        - Experiment with the control parameters to optimize for your specific use case
-        """)
+    cap.release()
 
 def update_trajectory_plot(container):
     if st.session_state.detector.trajectories:
